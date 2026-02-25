@@ -72,20 +72,40 @@ function validateSubscriptionPayload(body: Record<string, unknown>): Record<stri
   return errors;
 }
 
-export async function GET() {
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const subscriptions = await prisma.subscription.findMany({
-      orderBy: { createdAt: 'desc' },
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: params.id },
     });
-    return NextResponse.json({ subscriptions });
+
+    if (!subscription) {
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ subscription });
   } catch (error) {
-    console.error('Failed to fetch subscriptions:', error);
-    return NextResponse.json({ error: 'Failed to fetch subscriptions' }, { status: 500 });
+    console.error('Failed to fetch subscription:', error);
+    return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
+    // Check subscription exists
+    const existing = await prisma.subscription.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
+    }
+
     const body = (await request.json()) as Record<string, unknown>;
     const errors = validateSubscriptionPayload(body);
 
@@ -97,7 +117,8 @@ export async function POST(request: NextRequest) {
     const billingCycle = body.billingCycle as BillingCycle;
     const normalizedMonthlyCost = normalizeToMonthly(cost, billingCycle);
 
-    const subscription = await prisma.subscription.create({
+    const updated = await prisma.subscription.update({
+      where: { id: params.id },
       data: {
         name: (body.name as string).trim(),
         category: (body.category as string).trim(),
@@ -112,9 +133,30 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ subscription }, { status: 201 });
+    return NextResponse.json({ subscription: updated });
   } catch (error) {
-    console.error('Failed to create subscription:', error);
-    return NextResponse.json({ error: 'Failed to create subscription' }, { status: 500 });
+    console.error('Failed to update subscription:', error);
+    return NextResponse.json({ error: 'Failed to update subscription' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const existing = await prisma.subscription.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
+    }
+
+    await prisma.subscription.delete({ where: { id: params.id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete subscription:', error);
+    return NextResponse.json({ error: 'Failed to delete subscription' }, { status: 500 });
   }
 }

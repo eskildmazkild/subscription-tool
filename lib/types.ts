@@ -2,16 +2,17 @@ export type BillingCycle = 'monthly' | 'yearly';
 export type SubscriptionStatus = 'active' | 'free_trial' | 'cancelled';
 
 export interface Subscription {
-  id: number;
+  id: string;
   name: string;
   category: string;
   cost: number;
   billingCycle: BillingCycle;
   normalizedMonthlyCost: number;
   status: SubscriptionStatus;
+  startDate: string;
   trialEndDate: string | null;
   cancellationDate: string | null;
-  startDate: string;
+  lastActiveDate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,4 +45,19 @@ export interface CreateSubscriptionInput {
   status: SubscriptionStatus;
   trialEndDate?: string | null;
   cancellationDate?: string | null;
+  lastActiveDate?: string | null;
+}
+
+export type UpdateSubscriptionInput = CreateSubscriptionInput;
+
+export interface SubscriptionFormValues {
+  name: string;
+  category: string;
+  cost: string;
+  billingCycle: BillingCycle;
+  status: SubscriptionStatus;
+  startDate: string;
+  trialEndDate: string;
+  cancellationDate: string;
+  lastActiveDate: string;
 }

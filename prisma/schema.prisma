@@ -8,12 +8,17 @@ datasource db {
 }
 
 model Subscription {
-  id                   String   @id @default(cuid())
-  name                 String
-  category             String
-  cost                 Float
-  billingCycle         String
+  id                    String   @id @default(cuid())
+  name                  String
+  category              String
+  cost                  Float
+  billingCycle          String
   normalizedMonthlyCost Float
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  status                String   @default("active")
+  startDate             String
+  trialEndDate          String?
+  cancellationDate      String?
+  lastActiveDate        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
