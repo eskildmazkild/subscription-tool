@@ -1,203 +1,208 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { BillingCycle, SubscriptionStatus, Subscription, SubscriptionFormValues } from '@/lib/types';
-import { normalizeToMonthly } from '@/lib/utils';
+import React, { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { SubscriptionFormValues, SubscriptionStatus } from '@/lib/types';
+import { isTransitionAllowed } from '@/lib/statusMachine';
+import SubscriptionStatusControl from './SubscriptionStatusControl';
+
+// Client-side Zod schema (cost as string from input)
+const formSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required'),
+    category: z.string().min(1, 'Category is required'),
+    cost: z
+      .string()
+      .min(1, 'Cost is required')
+      .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
+        message: 'Cost must be a positive number',
+      }),
+    billingCycle: z.enum(['monthly', 'yearly']),
+    status: z.enum(['active', 'free_trial', 'cancelled']),
+    startDate: z.string().min(1, 'Start date is required'),
+    trialEndDate: z.string().optional(),
+    cancellationDate: z.string().optional(),
+    lastActiveDate: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === 'free_trial') {
+      if (!data.trialEndDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Trial end date is required for Free Trial',
+          path: ['trialEndDate'],
+        });
+      } else if (data.startDate && data.trialEndDate <= data.startDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Trial end date must be after start date',
+          path: ['trialEndDate'],
+        });
+      }
+    }
+
+    if (data.status === 'cancelled') {
+      if (!data.cancellationDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Cancellation date is required for Cancelled status',
+          path: ['cancellationDate'],
+        });
+      } else if (data.startDate && data.cancellationDate < data.startDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Cancellation date cannot be before start date',
+          path: ['cancellationDate'],
+        });
+      }
+
+      if (!data.lastActiveDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Last active date is required for Cancelled status',
+          path: ['lastActiveDate'],
+        });
+      } else if (data.cancellationDate && data.lastActiveDate > data.cancellationDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Last active date cannot be after cancellation date',
+          path: ['lastActiveDate'],
+        });
+      }
+    }
+  });
+
+type FormSchema = z.infer<typeof formSchema>;
 
 interface SubscriptionFormProps {
-  initialValues?: Subscription;
+  initialValues?: Partial<SubscriptionFormValues>;
+  originalStatus?: SubscriptionStatus;
   onSubmit: (values: SubscriptionFormValues) => Promise<void>;
   onCancel: () => void;
-  isSubmitting: boolean;
-  submitError: string | null;
-  mode: 'create' | 'edit';
+  isSubmitting?: boolean;
+  submitLabel?: string;
+  serverErrors?: Record<string, string>;
 }
 
-const DEFAULT_VALUES: SubscriptionFormValues = {
-  name: '',
-  category: '',
-  cost: '',
-  billingCycle: 'monthly',
-  status: 'active',
-  startDate: '',
-  trialEndDate: '',
-  cancellationDate: '',
-  lastActiveDate: '',
-};
-
 const CATEGORIES = [
-  'Streaming',
-  'Music',
-  'Software',
-  'Gaming',
-  'News',
-  'Fitness',
-  'Education',
+  'Entertainment',
   'Productivity',
-  'Storage',
+  'Health & Fitness',
+  'News & Media',
+  'Cloud Storage',
+  'Music',
+  'Gaming',
+  'Education',
+  'Finance',
   'Other',
 ];
 
 export default function SubscriptionForm({
   initialValues,
+  originalStatus,
   onSubmit,
   onCancel,
-  isSubmitting,
-  submitError,
-  mode,
+  isSubmitting = false,
+  submitLabel = 'Save',
+  serverErrors,
 }: SubscriptionFormProps) {
-  const [values, setValues] = useState<SubscriptionFormValues>(() => {
-    if (initialValues) {
-      return {
-        name: initialValues.name,
-        category: initialValues.category,
-        cost: String(initialValues.cost),
-        billingCycle: initialValues.billingCycle,
-        status: initialValues.status,
-        startDate: initialValues.startDate,
-        trialEndDate: initialValues.trialEndDate ?? '',
-        cancellationDate: initialValues.cancellationDate ?? '',
-        lastActiveDate: initialValues.lastActiveDate ?? '',
-      };
-    }
-    return DEFAULT_VALUES;
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    setError,
+    formState: { errors },
+  } = useForm<FormSchema>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: initialValues?.name ?? '',
+      category: initialValues?.category ?? '',
+      cost: initialValues?.cost ?? '',
+      billingCycle: initialValues?.billingCycle ?? 'monthly',
+      status: initialValues?.status ?? 'active',
+      startDate: initialValues?.startDate ?? '',
+      trialEndDate: initialValues?.trialEndDate ?? '',
+      cancellationDate: initialValues?.cancellationDate ?? '',
+      lastActiveDate: initialValues?.lastActiveDate ?? '',
+    },
   });
 
-  const [errors, setErrors] = useState<Partial<Record<keyof SubscriptionFormValues, string>>>({});
-  const [monthlyPreview, setMonthlyPreview] = useState<number | null>(null);
+  const currentStatus = watch('status') as SubscriptionStatus;
+  const [transitionError, setTransitionError] = React.useState<string | null>(null);
 
-  // Recalculate monthly preview whenever cost or billing cycle changes
+  // Apply server errors to form fields
   useEffect(() => {
-    const costNum = parseFloat(values.cost);
-    if (!isNaN(costNum) && costNum >= 0) {
-      setMonthlyPreview(normalizeToMonthly(costNum, values.billingCycle));
-    } else {
-      setMonthlyPreview(null);
-    }
-  }, [values.cost, values.billingCycle]);
-
-  function validate(): boolean {
-    const newErrors: Partial<Record<keyof SubscriptionFormValues, string>> = {};
-
-    if (!values.name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-
-    if (!values.category.trim()) {
-      newErrors.category = 'Category is required';
-    }
-
-    const costNum = parseFloat(values.cost);
-    if (values.cost.trim() === '') {
-      newErrors.cost = 'Cost is required';
-    } else if (isNaN(costNum) || costNum < 0) {
-      newErrors.cost = 'Cost must be a positive number';
-    } else if (!/^\d+(\.\d{1,2})?$/.test(values.cost.trim())) {
-      newErrors.cost = 'Cost must have at most 2 decimal places';
-    }
-
-    if (!values.billingCycle) {
-      newErrors.billingCycle = 'Billing cycle is required';
-    }
-
-    if (!values.status) {
-      newErrors.status = 'Status is required';
-    }
-
-    if (!values.startDate.trim()) {
-      newErrors.startDate = 'Start date is required';
-    } else if (isNaN(Date.parse(values.startDate))) {
-      newErrors.startDate = 'Start date must be a valid date';
-    } else {
-      const startDate = new Date(values.startDate);
-
-      if (values.cancellationDate.trim()) {
-        if (isNaN(Date.parse(values.cancellationDate))) {
-          newErrors.cancellationDate = 'Cancellation date must be a valid date';
-        } else if (new Date(values.cancellationDate) < startDate) {
-          newErrors.cancellationDate = 'Cancellation date must not precede start date';
-        }
-      }
-
-      if (values.trialEndDate.trim()) {
-        if (isNaN(Date.parse(values.trialEndDate))) {
-          newErrors.trialEndDate = 'Trial end date must be a valid date';
-        } else if (new Date(values.trialEndDate) < startDate) {
-          newErrors.trialEndDate = 'Trial end date must not precede start date';
-        }
-      }
-
-      if (values.lastActiveDate.trim()) {
-        if (isNaN(Date.parse(values.lastActiveDate))) {
-          newErrors.lastActiveDate = 'Last active date must be a valid date';
-        } else if (new Date(values.lastActiveDate) < startDate) {
-          newErrors.lastActiveDate = 'Last active date must not precede start date';
-        }
+    if (serverErrors) {
+      for (const [field, message] of Object.entries(serverErrors)) {
+        setError(field as keyof FormSchema, { type: 'server', message });
       }
     }
+  }, [serverErrors, setError]);
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!validate()) return;
-    await onSubmit(values);
-  }
-
-  function handleChange<K extends keyof SubscriptionFormValues>(
-    field: K,
-    value: SubscriptionFormValues[K]
-  ) {
-    setValues((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
+  function handleStatusChange(newStatus: SubscriptionStatus) {
+    // Check forbidden transition Cancelled → Free Trial
+    if (originalStatus === 'cancelled' && newStatus === 'free_trial') {
+      setTransitionError(
+        'A cancelled subscription cannot be moved back to Free Trial. Set it to Active first.'
+      );
+      return;
     }
+
+    // Also check current form status for transitions
+    const fromStatus = currentStatus;
+    if (!isTransitionAllowed(fromStatus, newStatus) && fromStatus !== newStatus) {
+      setTransitionError(
+        'A cancelled subscription cannot be moved back to Free Trial. Set it to Active first.'
+      );
+      return;
+    }
+
+    setTransitionError(null);
+
+    // Clear stale date fields when switching status
+    if (newStatus !== 'free_trial') {
+      setValue('trialEndDate', '');
+    }
+    if (newStatus !== 'cancelled') {
+      setValue('cancellationDate', '');
+      setValue('lastActiveDate', '');
+    }
+
+    setValue('status', newStatus);
   }
 
-  const inputClass = (field: keyof SubscriptionFormValues) =>
-    `w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-      errors[field]
-        ? 'border-red-400 bg-red-50 focus:ring-red-400'
-        : 'border-gray-300 bg-white'
-    }`;
+  async function handleFormSubmit(data: FormSchema) {
+    setTransitionError(null);
+    await onSubmit(data as SubscriptionFormValues);
+  }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      {/* Submit Error */}
-      {submitError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {submitError}
-        </div>
-      )}
-
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5">
       {/* Name */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Name <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Subscription Name <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
-          value={values.name}
-          onChange={(e) => handleChange('name', e.target.value)}
+          {...register('name')}
           placeholder="e.g. Netflix"
-          className={inputClass('name')}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        {errors.name && (
-          <p className="mt-1 text-xs text-red-600">{errors.name}</p>
-        )}
+        {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
       </div>
 
       {/* Category */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
           Category <span className="text-red-500">*</span>
         </label>
         <select
-          value={values.category}
-          onChange={(e) => handleChange('category', e.target.value)}
-          className={inputClass('category')}
+          {...register('category')}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
         >
           <option value="">Select a category</option>
           {CATEGORIES.map((cat) => (
@@ -206,163 +211,131 @@ export default function SubscriptionForm({
             </option>
           ))}
         </select>
-        {errors.category && (
-          <p className="mt-1 text-xs text-red-600">{errors.category}</p>
-        )}
+        {errors.category && <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>}
       </div>
 
       {/* Cost + Billing Cycle */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Cost (€) <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Cost (£) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
-            min="0"
             step="0.01"
-            value={values.cost}
-            onChange={(e) => handleChange('cost', e.target.value)}
-            placeholder="0.00"
-            className={inputClass('cost')}
+            min="0"
+            {...register('cost')}
+            placeholder="9.99"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          {errors.cost && (
-            <p className="mt-1 text-xs text-red-600">{errors.cost}</p>
-          )}
+          {errors.cost && <p className="mt-1 text-sm text-red-600">{errors.cost.message}</p>}
         </div>
-
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Billing Cycle <span className="text-red-500">*</span>
           </label>
           <select
-            value={values.billingCycle}
-            onChange={(e) => handleChange('billingCycle', e.target.value as BillingCycle)}
-            className={inputClass('billingCycle')}
+            {...register('billingCycle')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           >
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
           {errors.billingCycle && (
-            <p className="mt-1 text-xs text-red-600">{errors.billingCycle}</p>
+            <p className="mt-1 text-sm text-red-600">{errors.billingCycle.message}</p>
           )}
         </div>
       </div>
 
-      {/* Monthly Cost Preview */}
-      {monthlyPreview !== null && (
-        <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
-          Monthly equivalent:{' '}
-          <span className="font-semibold">
-            €{monthlyPreview.toFixed(2)}/month
-          </span>
-        </div>
-      )}
-
       {/* Status */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Status <span className="text-red-500">*</span>
-        </label>
-        <select
-          value={values.status}
-          onChange={(e) => handleChange('status', e.target.value as SubscriptionStatus)}
-          className={inputClass('status')}
-        >
-          <option value="active">Active</option>
-          <option value="free_trial">Free Trial</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        {errors.status && (
-          <p className="mt-1 text-xs text-red-600">{errors.status}</p>
-        )}
+        <SubscriptionStatusControl
+          value={currentStatus}
+          onChange={handleStatusChange}
+          error={transitionError ?? errors.status?.message}
+        />
       </div>
 
       {/* Start Date */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
           Start Date <span className="text-red-500">*</span>
         </label>
         <input
           type="date"
-          value={values.startDate}
-          onChange={(e) => handleChange('startDate', e.target.value)}
-          className={inputClass('startDate')}
+          {...register('startDate')}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         {errors.startDate && (
-          <p className="mt-1 text-xs text-red-600">{errors.startDate}</p>
+          <p className="mt-1 text-sm text-red-600">{errors.startDate.message}</p>
         )}
       </div>
 
-      {/* Trial End Date (shown when status is free_trial) */}
-      {values.status === 'free_trial' && (
+      {/* Conditional: Trial End Date */}
+      {currentStatus === 'free_trial' && (
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Trial End Date
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Trial End Date <span className="text-red-500">*</span>
           </label>
           <input
             type="date"
-            value={values.trialEndDate}
-            onChange={(e) => handleChange('trialEndDate', e.target.value)}
-            className={inputClass('trialEndDate')}
+            {...register('trialEndDate')}
+            className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
           {errors.trialEndDate && (
-            <p className="mt-1 text-xs text-red-600">{errors.trialEndDate}</p>
+            <p className="mt-1 text-sm text-red-600">{errors.trialEndDate.message}</p>
           )}
         </div>
       )}
 
-      {/* Cancellation Date + Last Active Date (shown when status is cancelled) */}
-      {values.status === 'cancelled' && (
+      {/* Conditional: Cancellation Date + Last Active Date */}
+      {currentStatus === 'cancelled' && (
         <>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Cancellation Date
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Cancellation Date <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
-              value={values.cancellationDate}
-              onChange={(e) => handleChange('cancellationDate', e.target.value)}
-              className={inputClass('cancellationDate')}
+              {...register('cancellationDate')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.cancellationDate && (
-              <p className="mt-1 text-xs text-red-600">{errors.cancellationDate}</p>
+              <p className="mt-1 text-sm text-red-600">{errors.cancellationDate.message}</p>
             )}
           </div>
-
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Last Active Date
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Last Active Date <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
-              value={values.lastActiveDate}
-              onChange={(e) => handleChange('lastActiveDate', e.target.value)}
-              className={inputClass('lastActiveDate')}
+              {...register('lastActiveDate')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {errors.lastActiveDate && (
-              <p className="mt-1 text-xs text-red-600">{errors.lastActiveDate}</p>
+              <p className="mt-1 text-sm text-red-600">{errors.lastActiveDate.message}</p>
             )}
           </div>
         </>
       )}
 
       {/* Actions */}
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-3 pt-2">
         <button
           type="button"
           onClick={onCancel}
           disabled={isSubmitting}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {isSubmitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Add Subscription'}
+          {isSubmitting ? 'Saving...' : submitLabel}
         </button>
       </div>
     </form>

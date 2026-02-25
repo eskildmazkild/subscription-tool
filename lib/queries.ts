@@ -1,66 +1,64 @@
 import { prisma } from './prisma';
-import type { Subscription, CategoryGroup, GrandTotals } from './types';
-
-function mapPrismaSubscription(sub: {
-  id: number;
-  name: string;
-  category: string;
-  cost: number;
-  billingCycle: string;
-  normalizedMonthlyCost: number;
-  status: string;
-  trialEndDate: string | null;
-  cancellationDate: string | null;
-  startDate: string;
-  createdAt: Date;
-  updatedAt: Date;
-}): Subscription {
-  return {
-    id: sub.id,
-    name: sub.name,
-    category: sub.category,
-    cost: sub.cost,
-    billingCycle: sub.billingCycle as Subscription['billingCycle'],
-    normalizedMonthlyCost: sub.normalizedMonthlyCost,
-    status: sub.status as Subscription['status'],
-    trialEndDate: sub.trialEndDate,
-    cancellationDate: sub.cancellationDate,
-    startDate: sub.startDate,
-    createdAt: sub.createdAt.toISOString(),
-    updatedAt: sub.updatedAt.toISOString(),
-  };
-}
+import { CategoryGroup, GrandTotals, Subscription } from './types';
 
 export async function getAllSubscriptions(): Promise<Subscription[]> {
-  const subs = await prisma.subscription.findMany({
+  const rows = await prisma.subscription.findMany({
     orderBy: { createdAt: 'desc' },
   });
-  return subs.map(mapPrismaSubscription);
-}
-
-export async function getSubscriptionsByCategory(): Promise<CategoryGroup[]> {
-  const subscriptions = await getAllSubscriptions();
-
-  const grouped = subscriptions.reduce<Record<string, Subscription[]>>((acc, sub) => {
-    if (!acc[sub.category]) {
-      acc[sub.category] = [];
-    }
-    acc[sub.category].push(sub);
-    return acc;
-  }, {});
-
-  return Object.entries(grouped).map(([category, subs]) => ({
-    category,
-    subscriptions: subs,
-    totalMonthlyCost: subs.reduce((sum, s) => sum + s.normalizedMonthlyCost, 0),
+  return rows.map((r) => ({
+    ...r,
+    billingCycle: r.billingCycle as 'monthly' | 'yearly',
+    status: r.status as 'active' | 'free_trial' | 'cancelled',
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
   }));
 }
 
-export async function getGrandTotals(): Promise<GrandTotals> {
-  const subscriptions = await getAllSubscriptions();
-  const totalMonthly = subscriptions.reduce((sum, s) => sum + s.normalizedMonthlyCost, 0);
+export async function getSubscriptionById(id: string): Promise<Subscription | null> {
+  const r = await prisma.subscription.findUnique({ where: { id } });
+  if (!r) return null;
   return {
-    totalMonthly,
-    totalYearly: totalMonthly * 12,
+    ...r,
+    billingCycle: r.billingCycle as 'monthly' | 'yearly',
+    status: r.status as 'active' | 'free_trial' | 'cancelled',
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Groups subscriptions by category and computes totals.
+ * Cancelled subscriptions are excluded from cost totals (AC-7).
+ */
+export function groupByCategory(subscriptions: Subscription[]): CategoryGroup[] {
+  const map = new Map<string, Subscription[]>();
+
+  for (const sub of subscriptions) {
+    const existing = map.get(sub.category) ?? [];
+    existing.push(sub);
+    map.set(sub.category, existing);
+  }
+
+  return Array.from(map.entries()).map(([category, subs]) => ({
+    category,
+    subscriptions: subs,
+    totalMonthlyCost: subs
+      .filter((s) => s.status !== 'cancelled')
+      .reduce((sum, s) => sum + s.normalizedMonthlyCost, 0),
+  }));
+}
+
+/**
+ * Computes grand totals excluding cancelled subscriptions (AC-7).
+ */
+export function computeGrandTotals(subscriptions: Subscription[]): GrandTotals {
+  const activeSubscriptions = subscriptions.filter((s) => s.status !== 'cancelled');
+  const totalMonthly = activeSubscriptions.reduce(
+    (sum, s) => sum + s.normalizedMonthlyCost,
+    0
+  );
+  return {
+    totalMonthly: parseFloat(totalMonthly.toFixed(2)),
+    totalYearly: parseFloat((totalMonthly * 12).toFixed(2)),
   };
 }

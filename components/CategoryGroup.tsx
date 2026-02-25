@@ -1,26 +1,27 @@
 'use client';
 
-import { CategoryGroup as CategoryGroupType, Subscription } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import React from 'react';
+import { CategoryGroup as CategoryGroupType } from '@/lib/types';
 import SubscriptionCard from './SubscriptionCard';
 
 interface CategoryGroupProps {
   group: CategoryGroupType;
-  onEdit: (subscription: Subscription) => void;
+  onUpdated: () => void;
 }
 
-export default function CategoryGroup({ group, onEdit }: CategoryGroupProps) {
+export default function CategoryGroup({ group, onUpdated }: CategoryGroupProps) {
   return (
-    <div className="mb-6">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-700">{group.category}</h2>
-        <span className="text-sm text-gray-500">
-          {formatCurrency(group.totalMonthlyCost)}/mo
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
+        <h3 className="text-sm font-semibold text-gray-700">{group.category}</h3>
+        <span className="text-sm font-medium text-gray-600">
+          £{group.totalMonthlyCost.toFixed(2)}
+          <span className="text-xs text-gray-400">/mo</span>
         </span>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="divide-y divide-gray-100">
         {group.subscriptions.map((sub) => (
-          <SubscriptionCard key={sub.id} subscription={sub} onEdit={onEdit} />
+          <SubscriptionCard key={sub.id} subscription={sub} onUpdated={onUpdated} />
         ))}
       </div>
     </div>

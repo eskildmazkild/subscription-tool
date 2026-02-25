@@ -1,66 +1,81 @@
 'use client';
 
+import React, { useState } from 'react';
 import { Subscription } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import StatusBadge from './StatusBadge';
+import EditSubscriptionModal from './EditSubscriptionModal';
 
 interface SubscriptionCardProps {
   subscription: Subscription;
-  onEdit: (subscription: Subscription) => void;
+  onUpdated: () => void;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-green-100 text-green-700',
-  free_trial: 'bg-yellow-100 text-yellow-700',
-  cancelled: 'bg-red-100 text-red-600',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  active: 'Active',
-  free_trial: 'Free Trial',
-  cancelled: 'Cancelled',
-};
-
-export default function SubscriptionCard({ subscription, onEdit }: SubscriptionCardProps) {
-  const statusStyle = STATUS_STYLES[subscription.status] ?? 'bg-gray-100 text-gray-600';
-  const statusLabel = STATUS_LABELS[subscription.status] ?? subscription.status;
+export default function SubscriptionCard({ subscription, onUpdated }: SubscriptionCardProps) {
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const isCancelled = subscription.status === 'cancelled';
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm transition hover:shadow-md">
-      <div className="flex flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-900">{subscription.name}</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-        <span className="text-xs text-gray-500">
-          {subscription.billingCycle === 'yearly' ? 'Yearly' : 'Monthly'} ·{' '}
-          {formatCurrency(subscription.cost)}
-        </span>
-        {subscription.billingCycle === 'yearly' && (
-          <span className="text-xs text-gray-400">
-            ≈ {formatCurrency(subscription.normalizedMonthlyCost)}/month
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <div className="text-right">
-          <div className="text-sm font-semibold text-gray-900">
-            {formatCurrency(subscription.normalizedMonthlyCost)}
-            <span className="text-xs font-normal text-gray-500">/mo</span>
+    <>
+      <div
+        className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+          isCancelled
+            ? 'bg-gray-50 border-gray-200 opacity-60'
+            : 'bg-white border-gray-200 hover:border-gray-300'
+        }`}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="min-w-0">
+            <p
+              className={`text-sm font-medium truncate ${
+                isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
+              }`}
+            >
+              {subscription.name}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {subscription.billingCycle === 'monthly' ? 'Monthly' : 'Yearly'} ·{' '}
+              £{subscription.cost.toFixed(2)}
+            </p>
           </div>
         </div>
-        <button
-          onClick={() => onEdit(subscription)}
-          className="ml-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-800"
-          aria-label={`Edit ${subscription.name}`}
-        >
-          Edit
-        </button>
+
+        <div className="flex items-center gap-4 ml-4 flex-shrink-0">
+          <StatusBadge
+            status={subscription.status}
+            trialEndDate={subscription.trialEndDate}
+            lastActiveDate={subscription.lastActiveDate}
+          />
+
+          {!isCancelled && (
+            <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+              £{subscription.normalizedMonthlyCost.toFixed(2)}
+              <span className="text-xs font-normal text-gray-500">/mo</span>
+            </p>
+          )}
+
+          <button
+            onClick={() => setIsEditOpen(true)}
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+            aria-label={`Edit ${subscription.name}`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
-    </div>
+
+      <EditSubscriptionModal
+        subscription={subscription}
+        isOpen={isEditOpen}
+        onClose={() => setIsEditOpen(false)}
+        onSuccess={onUpdated}
+      />
+    </>
   );
 }

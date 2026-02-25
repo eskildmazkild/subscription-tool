@@ -1,103 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { normalizeToMonthly } from '@/lib/utils';
-import { BillingCycle, SubscriptionStatus } from '@/lib/types';
+import { calculateNormalizedMonthlyCost } from '@/lib/utils';
+import { subscriptionSchema } from '@/lib/subscriptionSchema';
+import { isTransitionAllowed } from '@/lib/statusMachine';
+import { SubscriptionStatus } from '@/lib/types';
+import { ZodError } from 'zod';
 
-const VALID_BILLING_CYCLES: BillingCycle[] = ['monthly', 'yearly'];
-const VALID_STATUSES: SubscriptionStatus[] = ['active', 'free_trial', 'cancelled'];
+type RouteParams = { params: { id: string } };
 
-function validateSubscriptionPayload(body: Record<string, unknown>): Record<string, string> {
-  const errors: Record<string, string> = {};
-
-  if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
-    errors.name = 'Name is required';
-  }
-
-  if (!body.category || typeof body.category !== 'string' || body.category.trim() === '') {
-    errors.category = 'Category is required';
-  }
-
-  const cost = Number(body.cost);
-  if (body.cost === undefined || body.cost === null || body.cost === '') {
-    errors.cost = 'Cost is required';
-  } else if (isNaN(cost) || cost < 0) {
-    errors.cost = 'Cost must be a positive number';
-  } else if (!/^\d+(\.\d{1,2})?$/.test(String(body.cost))) {
-    errors.cost = 'Cost must have at most 2 decimal places';
-  }
-
-  if (!body.billingCycle || !VALID_BILLING_CYCLES.includes(body.billingCycle as BillingCycle)) {
-    errors.billingCycle = 'Billing cycle must be monthly or yearly';
-  }
-
-  if (!body.status || !VALID_STATUSES.includes(body.status as SubscriptionStatus)) {
-    errors.status = 'Status must be active, free_trial, or cancelled';
-  }
-
-  if (!body.startDate || typeof body.startDate !== 'string' || body.startDate.trim() === '') {
-    errors.startDate = 'Start date is required';
-  } else if (isNaN(Date.parse(body.startDate as string))) {
-    errors.startDate = 'Start date must be a valid date';
-  }
-
-  // Cross-field date validation
-  if (!errors.startDate) {
-    const startDate = new Date(body.startDate as string);
-
-    if (body.cancellationDate && typeof body.cancellationDate === 'string' && body.cancellationDate.trim() !== '') {
-      if (isNaN(Date.parse(body.cancellationDate))) {
-        errors.cancellationDate = 'Cancellation date must be a valid date';
-      } else if (new Date(body.cancellationDate) < startDate) {
-        errors.cancellationDate = 'Cancellation date must not precede start date';
-      }
-    }
-
-    if (body.trialEndDate && typeof body.trialEndDate === 'string' && body.trialEndDate.trim() !== '') {
-      if (isNaN(Date.parse(body.trialEndDate))) {
-        errors.trialEndDate = 'Trial end date must be a valid date';
-      } else if (new Date(body.trialEndDate) < startDate) {
-        errors.trialEndDate = 'Trial end date must not precede start date';
-      }
-    }
-
-    if (body.lastActiveDate && typeof body.lastActiveDate === 'string' && body.lastActiveDate.trim() !== '') {
-      if (isNaN(Date.parse(body.lastActiveDate))) {
-        errors.lastActiveDate = 'Last active date must be a valid date';
-      } else if (new Date(body.lastActiveDate) < startDate) {
-        errors.lastActiveDate = 'Last active date must not precede start date';
-      }
-    }
-  }
-
-  return errors;
-}
-
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const subscription = await prisma.subscription.findUnique({
       where: { id: params.id },
     });
-
     if (!subscription) {
       return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
     }
-
     return NextResponse.json({ subscription });
   } catch (error) {
-    console.error('Failed to fetch subscription:', error);
+    console.error('GET /api/subscriptions/[id] error:', error);
     return NextResponse.json({ error: 'Failed to fetch subscription' }, { status: 500 });
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    // Check subscription exists
     const existing = await prisma.subscription.findUnique({
       where: { id: params.id },
     });
@@ -106,57 +33,94 @@ export async function PUT(
       return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
-    const errors = validateSubscriptionPayload(body);
+    const body = await request.json();
 
-    if (Object.keys(errors).length > 0) {
+    const newStatus: SubscriptionStatus =
+      body.status ?? (existing.status as SubscriptionStatus);
+    const currentStatus = existing.status as SubscriptionStatus;
+
+    // Check forbidden transition: Cancelled → Free Trial
+    if (!isTransitionAllowed(currentStatus, newStatus)) {
+      return NextResponse.json(
+        {
+          errors: {
+            status:
+              'A cancelled subscription cannot be moved back to Free Trial. Set it to Active first.',
+          },
+        },
+        { status: 422 }
+      );
+    }
+
+    // Parse and validate full payload
+    const parseResult = subscriptionSchema.safeParse({
+      name: body.name ?? existing.name,
+      category: body.category ?? existing.category,
+      cost:
+        typeof body.cost === 'string'
+          ? parseFloat(body.cost)
+          : body.cost ?? existing.cost,
+      billingCycle: body.billingCycle ?? existing.billingCycle,
+      status: newStatus,
+      startDate: body.startDate ?? existing.startDate,
+      trialEndDate: body.trialEndDate ?? null,
+      cancellationDate: body.cancellationDate ?? null,
+      lastActiveDate: body.lastActiveDate ?? null,
+    });
+
+    if (!parseResult.success) {
+      const errors = formatZodErrors(parseResult.error);
       return NextResponse.json({ errors }, { status: 400 });
     }
 
-    const cost = Number(body.cost);
-    const billingCycle = body.billingCycle as BillingCycle;
-    const normalizedMonthlyCost = normalizeToMonthly(cost, billingCycle);
+    const data = parseResult.data;
+    const normalizedMonthlyCost = calculateNormalizedMonthlyCost(data.cost, data.billingCycle);
 
-    const updated = await prisma.subscription.update({
+    // Clear inapplicable date fields
+    const trialEndDate = data.status === 'free_trial' ? (data.trialEndDate ?? null) : null;
+    const cancellationDate = data.status === 'cancelled' ? (data.cancellationDate ?? null) : null;
+    const lastActiveDate = data.status === 'cancelled' ? (data.lastActiveDate ?? null) : null;
+
+    const subscription = await prisma.subscription.update({
       where: { id: params.id },
       data: {
-        name: (body.name as string).trim(),
-        category: (body.category as string).trim(),
-        cost,
-        billingCycle,
+        name: data.name,
+        category: data.category,
+        cost: data.cost,
+        billingCycle: data.billingCycle,
         normalizedMonthlyCost,
-        status: body.status as string,
-        startDate: body.startDate as string,
-        trialEndDate: (body.trialEndDate as string | null | undefined) || null,
-        cancellationDate: (body.cancellationDate as string | null | undefined) || null,
-        lastActiveDate: (body.lastActiveDate as string | null | undefined) || null,
+        status: data.status,
+        startDate: data.startDate,
+        trialEndDate,
+        cancellationDate,
+        lastActiveDate,
       },
     });
 
-    return NextResponse.json({ subscription: updated });
+    return NextResponse.json({ subscription });
   } catch (error) {
-    console.error('Failed to update subscription:', error);
+    console.error('PATCH /api/subscriptions/[id] error:', error);
     return NextResponse.json({ error: 'Failed to update subscription' }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
-    const existing = await prisma.subscription.findUnique({
-      where: { id: params.id },
-    });
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
-    }
-
     await prisma.subscription.delete({ where: { id: params.id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to delete subscription:', error);
+    console.error('DELETE /api/subscriptions/[id] error:', error);
     return NextResponse.json({ error: 'Failed to delete subscription' }, { status: 500 });
   }
+}
+
+function formatZodErrors(error: ZodError): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const path = issue.path.join('.');
+    if (path && !errors[path]) {
+      errors[path] = issue.message;
+    }
+  }
+  return errors;
 }
