@@ -1,5 +1,5 @@
 export type BillingCycle = 'monthly' | 'yearly';
-export type SubscriptionStatus = 'active' | 'trial' | 'cancelled';
+export type SubscriptionStatus = 'active' | 'free_trial' | 'cancelled';
 
 export interface Subscription {
   id: number;
@@ -7,11 +7,13 @@ export interface Subscription {
   category: string;
   cost: number;
   billingCycle: BillingCycle;
+  normalizedMonthlyCost: number;
   status: SubscriptionStatus;
   trialEndDate: string | null;
   cancellationDate: string | null;
   startDate: string;
-  monthlyCostEquivalent: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CategoryGroup {
@@ -27,4 +29,19 @@ export interface GrandTotals {
 
 export interface ApiSubscriptionsResponse {
   subscriptions: Subscription[];
+}
+
+export interface ApiErrorResponse {
+  errors: Record<string, string>;
+}
+
+export interface CreateSubscriptionInput {
+  name: string;
+  category: string;
+  cost: number;
+  billingCycle: BillingCycle;
+  startDate: string;
+  status: SubscriptionStatus;
+  trialEndDate?: string | null;
+  cancellationDate?: string | null;
 }

@@ -1,14 +1,16 @@
-import Link from 'next/link';
+interface EmptyStateProps {
+  onAdd?: () => void;
+}
 
-export default function EmptyState() {
+export default function EmptyState({ onAdd }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center mb-4">
+    <div className="mt-8 flex flex-col items-center justify-center py-16 text-center">
+      <div className="rounded-full bg-blue-50 p-4 mb-4">
         <svg
-          className="w-8 h-8 text-indigo-500"
+          className="h-8 w-8 text-blue-400"
           fill="none"
-          stroke="currentColor"
           viewBox="0 0 24 24"
+          stroke="currentColor"
           aria-hidden="true"
         >
           <path
@@ -19,19 +21,22 @@ export default function EmptyState() {
           />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">No subscriptions yet</h2>
-      <p className="text-gray-500 text-sm mb-6 max-w-sm">
-        Start tracking your recurring costs by adding your first subscription.
+      <h2 className="text-lg font-semibold text-gray-900">No subscriptions yet</h2>
+      <p className="mt-1 text-sm text-gray-500 max-w-xs">
+        Add your first subscription to start tracking your recurring costs.
       </p>
-      <Link
-        href="/subscriptions/new"
-        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-        Add your first subscription
-      </Link>
+      {onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+          </svg>
+          Add Subscription
+        </button>
+      )}
     </div>
   );
 }
