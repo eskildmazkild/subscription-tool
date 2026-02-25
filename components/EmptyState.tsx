@@ -1,23 +1,34 @@
-'use client';
+import React from 'react';
 
 interface EmptyStateProps {
-  onAdd: () => void;
+  onAdd?: () => void;
 }
 
 export default function EmptyState({ onAdd }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="mb-4 text-5xl">📋</div>
-      <h2 className="mb-2 text-lg font-semibold text-gray-800">No subscriptions yet</h2>
-      <p className="mb-6 max-w-xs text-sm text-gray-500">
-        Start tracking your recurring costs by adding your first subscription.
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+          />
+        </svg>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-1">No subscriptions yet</h3>
+      <p className="text-sm text-gray-500 mb-6 max-w-xs">
+        Start tracking your recurring subscriptions to get a clear picture of your monthly costs.
       </p>
-      <button
-        onClick={onAdd}
-        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-      >
-        + Add Subscription
-      </button>
+      {onAdd && (
+        <button
+          onClick={onAdd}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Add your first subscription
+        </button>
+      )}
     </div>
   );
 }

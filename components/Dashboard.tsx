@@ -1,63 +1,36 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Subscription, CategoryGroup, GrandTotals } from '@/lib/types';
-import { normalizeToMonthly } from '@/lib/utils';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Subscription } from '@/lib/types';
+import { groupByCategory, computeGrandTotals } from '@/lib/queries';
 import CostSummaryBar from './CostSummaryBar';
-import CategoryGroupComponent from './CategoryGroup';
+import CategoryGroup from './CategoryGroup';
 import EmptyState from './EmptyState';
 import AddSubscriptionModal from './AddSubscriptionModal';
-import EditSubscriptionModal from './EditSubscriptionModal';
-
-function groupSubscriptions(subscriptions: Subscription[]): CategoryGroup[] {
-  const map = new Map<string, Subscription[]>();
-  for (const sub of subscriptions) {
-    const existing = map.get(sub.category) ?? [];
-    existing.push(sub);
-    map.set(sub.category, existing);
-  }
-
-  return Array.from(map.entries())
-    .map(([category, subs]) => ({
-      category,
-      subscriptions: subs,
-      totalMonthlyCost:
-        Math.round(
-          subs.reduce((sum, s) => sum + normalizeToMonthly(s.cost, s.billingCycle), 0) * 100
-        ) / 100,
-    }))
-    .sort((a, b) => a.category.localeCompare(b.category));
-}
-
-function computeTotals(subscriptions: Subscription[]): GrandTotals {
-  const totalMonthly =
-    Math.round(
-      subscriptions.reduce((sum, s) => sum + normalizeToMonthly(s.cost, s.billingCycle), 0) * 100
-    ) / 100;
-  return {
-    totalMonthly,
-    totalYearly: Math.round(totalMonthly * 12 * 100) / 100,
-  };
-}
 
 export default function Dashboard() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch('/api/subscriptions');
-      if (!res.ok) throw new Error('Failed to load subscriptions');
-      const data = (await res.json()) as { subscriptions: Subscription[] };
-      setSubscriptions(data.subscriptions);
-    } catch {
-      setError('Failed to load subscriptions. Please try again.');
+      const response = await fetch('/api/subscriptions');
+      if (!response.ok) throw new Error('Failed to fetch subscriptions');
+      const data = await response.json();
+      setSubscriptions(
+        (data.subscriptions as Subscription[]).map((s) => ({
+          ...s,
+          status: s.status as Subscription['status'],
+          billingCycle: s.billingCycle as Subscription['billingCycle'],
+        }))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, []);
 
@@ -65,98 +38,69 @@ export default function Dashboard() {
     void fetchSubscriptions();
   }, [fetchSubscriptions]);
 
-  function handleCreated(newSub: Subscription) {
-    setSubscriptions((prev) => [newSub, ...prev]);
-  }
-
-  function handleUpdated(updated: Subscription) {
-    setSubscriptions((prev) =>
-      prev.map((s) => (s.id === updated.id ? updated : s))
-    );
-  }
-
-  function handleEditOpen(subscription: Subscription) {
-    setEditingSubscription(subscription);
-  }
-
-  function handleEditClose() {
-    setEditingSubscription(null);
-  }
-
-  const groups = groupSubscriptions(subscriptions);
-  const totals = computeTotals(subscriptions);
+  const groups = groupByCategory(subscriptions);
+  const totals = computeGrandTotals(subscriptions);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Subscription Manager</h1>
-            <p className="text-sm text-gray-500">Track your recurring costs</p>
+            <h1 className="text-2xl font-bold text-gray-900">Subscriptions</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Manage your recurring payments</p>
           </div>
           <button
-            onClick={() => setShowAddModal(true)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800"
+            onClick={() => setIsAddOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
           >
-            + Add Subscription
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Subscription
           </button>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-3xl px-4 py-6">
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-          </div>
-        )}
+        {/* Cost Summary */}
+        {subscriptions.length > 0 && <CostSummaryBar totals={totals} />}
 
-        {!loading && error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && (
-          <>
-            {/* Cost Summary */}
-            <div className="mb-6">
-              <CostSummaryBar totals={totals} />
+        {/* Content */}
+        <div className="mt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
             </div>
-
-            {/* Subscription Groups */}
-            {subscriptions.length === 0 ? (
-              <EmptyState onAdd={() => setShowAddModal(true)} />
-            ) : (
-              groups.map((group) => (
-                <CategoryGroupComponent
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+              {error}
+              <button
+                onClick={() => void fetchSubscriptions()}
+                className="ml-2 underline hover:no-underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : subscriptions.length === 0 ? (
+            <EmptyState onAdd={() => setIsAddOpen(true)} />
+          ) : (
+            <div className="space-y-4">
+              {groups.map((group) => (
+                <CategoryGroup
                   key={group.category}
                   group={group}
-                  onEdit={handleEditOpen}
+                  onUpdated={() => void fetchSubscriptions()}
                 />
-              ))
-            )}
-          </>
-        )}
-      </main>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-      {/* Add Modal */}
-      {showAddModal && (
-        <AddSubscriptionModal
-          onClose={() => setShowAddModal(false)}
-          onCreated={handleCreated}
-        />
-      )}
-
-      {/* Edit Modal */}
-      {editingSubscription && (
-        <EditSubscriptionModal
-          subscription={editingSubscription}
-          onClose={handleEditClose}
-          onUpdated={handleUpdated}
-        />
-      )}
+      <AddSubscriptionModal
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        onSuccess={() => void fetchSubscriptions()}
+      />
     </div>
   );
 }

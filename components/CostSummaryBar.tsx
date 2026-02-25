@@ -1,7 +1,5 @@
-'use client';
-
+import React from 'react';
 import { GrandTotals } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
 
 interface CostSummaryBarProps {
   totals: GrandTotals;
@@ -9,16 +7,13 @@ interface CostSummaryBarProps {
 
 export default function CostSummaryBar({ totals }: CostSummaryBarProps) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Monthly Total</p>
-        <p className="text-2xl font-bold text-gray-900">{formatCurrency(totals.totalMonthly)}</p>
-      </div>
-      <div className="hidden h-10 w-px bg-gray-200 sm:block" />
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Yearly Total</p>
-        <p className="text-2xl font-bold text-gray-900">{formatCurrency(totals.totalYearly)}</p>
-      </div>
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white">
+      <p className="text-sm font-medium text-blue-100 mb-1">Total Monthly Cost</p>
+      <p className="text-3xl font-bold">£{totals.totalMonthly.toFixed(2)}</p>
+      <p className="text-sm text-blue-200 mt-1">
+        £{totals.totalYearly.toFixed(2)} per year
+      </p>
+      <p className="text-xs text-blue-300 mt-2">Cancelled subscriptions excluded</p>
     </div>
   );
 }

@@ -1,26 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Subscription, SubscriptionFormValues } from '@/lib/types';
 import SubscriptionForm from './SubscriptionForm';
 
 interface EditSubscriptionModalProps {
   subscription: Subscription;
+  isOpen: boolean;
   onClose: () => void;
-  onUpdated: (updated: Subscription) => void;
+  onSuccess: () => void;
 }
 
 export default function EditSubscriptionModal({
   subscription,
+  isOpen,
   onClose,
-  onUpdated,
+  onSuccess,
 }: EditSubscriptionModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [serverErrors, setServerErrors] = useState<Record<string, string> | undefined>();
+
+  if (!isOpen) return null;
+
+  const initialValues: SubscriptionFormValues = {
+    name: subscription.name,
+    category: subscription.category,
+    cost: String(subscription.cost),
+    billingCycle: subscription.billingCycle,
+    status: subscription.status,
+    startDate: subscription.startDate,
+    trialEndDate: subscription.trialEndDate ?? '',
+    cancellationDate: subscription.cancellationDate ?? '',
+    lastActiveDate: subscription.lastActiveDate ?? '',
+  };
 
   async function handleSubmit(values: SubscriptionFormValues) {
     setIsSubmitting(true);
-    setSubmitError(null);
+    setServerErrors(undefined);
 
     try {
       const payload = {
@@ -30,80 +46,65 @@ export default function EditSubscriptionModal({
         billingCycle: values.billingCycle,
         status: values.status,
         startDate: values.startDate,
-        trialEndDate: values.trialEndDate.trim() || null,
-        cancellationDate: values.cancellationDate.trim() || null,
-        lastActiveDate: values.lastActiveDate.trim() || null,
+        trialEndDate: values.status === 'free_trial' ? values.trialEndDate || null : null,
+        cancellationDate: values.status === 'cancelled' ? values.cancellationDate || null : null,
+        lastActiveDate: values.status === 'cancelled' ? values.lastActiveDate || null : null,
       };
 
       const response = await fetch(`/api/subscriptions/${subscription.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = (await response.json()) as { errors?: Record<string, string>; error?: string };
-        const message =
-          data.error ||
-          (data.errors ? Object.values(data.errors).join(', ') : null) ||
-          'Failed to save changes. Please try again.';
-        setSubmitError(message);
+        if (data.errors) {
+          setServerErrors(data.errors as Record<string, string>);
+        }
         return;
       }
 
-      const data = (await response.json()) as { subscription: Subscription };
-      onUpdated(data.subscription);
+      onSuccess();
       onClose();
-    } catch {
-      setSubmitError('Failed to save changes. Please try again.');
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      setServerErrors({ _global: 'An unexpected error occurred. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
-
-      {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+      <div className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
           <button
             onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Close modal"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-
-        {/* Body */}
-        <div className="max-h-[80vh] overflow-y-auto px-6 py-4">
+        <div className="px-6 py-5">
           <SubscriptionForm
-            mode="edit"
-            initialValues={subscription}
+            initialValues={initialValues}
+            originalStatus={subscription.status}
             onSubmit={handleSubmit}
             onCancel={onClose}
             isSubmitting={isSubmitting}
-            submitError={submitError}
+            submitLabel="Save Changes"
+            serverErrors={serverErrors}
           />
         </div>
       </div>

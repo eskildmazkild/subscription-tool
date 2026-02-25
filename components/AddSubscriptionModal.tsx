@@ -1,107 +1,48 @@
 'use client';
 
-import { useState } from 'react';
-import { Subscription, SubscriptionFormValues } from '@/lib/types';
-import SubscriptionForm from './SubscriptionForm';
+import React from 'react';
+import AddSubscriptionForm from './AddSubscriptionForm';
 
 interface AddSubscriptionModalProps {
+  isOpen: boolean;
   onClose: () => void;
-  onCreated: (subscription: Subscription) => void;
+  onSuccess: () => void;
 }
 
 export default function AddSubscriptionModal({
+  isOpen,
   onClose,
-  onCreated,
+  onSuccess,
 }: AddSubscriptionModalProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  if (!isOpen) return null;
 
-  async function handleSubmit(values: SubscriptionFormValues) {
-    setIsSubmitting(true);
-    setSubmitError(null);
-
-    try {
-      const payload = {
-        name: values.name,
-        category: values.category,
-        cost: parseFloat(values.cost),
-        billingCycle: values.billingCycle,
-        status: values.status,
-        startDate: values.startDate,
-        trialEndDate: values.trialEndDate.trim() || null,
-        cancellationDate: values.cancellationDate.trim() || null,
-        lastActiveDate: values.lastActiveDate.trim() || null,
-      };
-
-      const response = await fetch('/api/subscriptions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { errors?: Record<string, string>; error?: string };
-        const message =
-          data.error ||
-          (data.errors ? Object.values(data.errors).join(', ') : null) ||
-          'Failed to create subscription. Please try again.';
-        setSubmitError(message);
-        return;
-      }
-
-      const data = (await response.json()) as { subscription: Subscription };
-      onCreated(data.subscription);
-      onClose();
-    } catch {
-      setSubmitError('Failed to create subscription. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+  function handleSuccess() {
+    onSuccess();
+    onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
-
-      {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+      <div className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Add Subscription</h2>
           <button
             onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Close modal"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-
-        {/* Body */}
-        <div className="max-h-[80vh] overflow-y-auto px-6 py-4">
-          <SubscriptionForm
-            mode="create"
-            onSubmit={handleSubmit}
-            onCancel={onClose}
-            isSubmitting={isSubmitting}
-            submitError={submitError}
-          />
+        <div className="px-6 py-5">
+          <AddSubscriptionForm onSuccess={handleSuccess} onCancel={onClose} />
         </div>
       </div>
     </div>
