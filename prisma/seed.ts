@@ -3,66 +3,66 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Clear existing data
   await prisma.subscription.deleteMany();
 
   await prisma.subscription.createMany({
     data: [
       {
         name: 'Netflix',
-        category: 'Streaming',
-        cost: 10,
+        category: 'streaming',
+        cost: 15.99,
         billingCycle: 'monthly',
+        normalizedMonthlyCost: 15.99,
         status: 'active',
         startDate: '2024-01-01',
         trialEndDate: null,
         cancellationDate: null,
       },
       {
-        name: 'Spotify Annual',
-        category: 'Streaming',
-        cost: 120,
+        name: 'Spotify',
+        category: 'music',
+        cost: 9.99,
+        billingCycle: 'monthly',
+        normalizedMonthlyCost: 9.99,
+        status: 'active',
+        startDate: '2024-01-15',
+        trialEndDate: null,
+        cancellationDate: null,
+      },
+      {
+        name: 'Adobe Creative Cloud',
+        category: 'software',
+        cost: 599.99,
         billingCycle: 'yearly',
-        status: 'active',
-        startDate: '2024-01-01',
-        trialEndDate: null,
-        cancellationDate: null,
-      },
-      {
-        name: 'Gym Membership',
-        category: 'Fitness',
-        cost: 30,
-        billingCycle: 'monthly',
+        normalizedMonthlyCost: 50.0,
         status: 'active',
         startDate: '2024-03-01',
         trialEndDate: null,
         cancellationDate: null,
       },
       {
-        name: 'GitHub Copilot',
-        category: 'Software',
-        cost: 20,
+        name: 'Apple TV+',
+        category: 'streaming',
+        cost: 8.99,
         billingCycle: 'monthly',
-        status: 'trial',
-        startDate: '2025-07-01',
-        trialEndDate: '2025-08-01',
+        normalizedMonthlyCost: 8.99,
+        status: 'free_trial',
+        startDate: '2024-06-01',
+        trialEndDate: '2024-07-01',
         cancellationDate: null,
-      },
-      {
-        name: 'Old Service',
-        category: 'Software',
-        cost: 15,
-        billingCycle: 'monthly',
-        status: 'cancelled',
-        startDate: '2023-01-01',
-        trialEndDate: null,
-        cancellationDate: '2024-06-01',
       },
     ],
   });
 
-  console.log('Seeded database successfully');
+  console.log('Seed data created successfully.');
 }
 
 main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

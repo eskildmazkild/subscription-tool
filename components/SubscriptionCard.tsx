@@ -1,93 +1,55 @@
-import { formatCurrency } from '@/lib/utils';
 import type { Subscription } from '@/lib/types';
 
 interface SubscriptionCardProps {
   subscription: Subscription;
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
+const STATUS_STYLES: Record<string, string> = {
+  active: 'bg-green-100 text-green-700',
+  free_trial: 'bg-yellow-100 text-yellow-700',
+  cancelled: 'bg-red-100 text-red-700',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  free_trial: 'Free Trial',
+  cancelled: 'Cancelled',
+};
 
 export default function SubscriptionCard({ subscription }: SubscriptionCardProps) {
-  const isCancelled = subscription.status === 'cancelled';
-  const isTrial = subscription.status === 'trial';
+  const statusStyle = STATUS_STYLES[subscription.status] ?? 'bg-gray-100 text-gray-700';
+  const statusLabel = STATUS_LABELS[subscription.status] ?? subscription.status;
 
   return (
-    <div
-      className={`rounded-lg border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-colors ${
-        isCancelled
-          ? 'bg-gray-50 border-gray-200 opacity-60'
-          : 'bg-white border-gray-200 hover:border-indigo-300 hover:shadow-sm'
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`font-semibold text-sm ${
-                isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
-              }`}
-            >
-              {subscription.name}
-            </span>
-
-            {isCancelled && (
-              <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">
-                Cancelled
-              </span>
-            )}
-
-            {isTrial && (
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                Free Trial
-              </span>
-            )}
-          </div>
-
-          <div className="mt-1 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500 capitalize">
-              {subscription.billingCycle === 'yearly' ? 'Billed yearly' : 'Billed monthly'}
-            </span>
-
-            {subscription.billingCycle === 'yearly' && (
-              <span className="text-xs text-gray-400">
-                ({formatCurrency(subscription.cost)}/year)
-              </span>
-            )}
-
-            {isTrial && subscription.trialEndDate && (
-              <span className="text-xs text-amber-600">
-                Trial ends: {formatDate(subscription.trialEndDate)}
-              </span>
-            )}
-
-            {isCancelled && subscription.cancellationDate && (
-              <span className="text-xs text-gray-400">
-                Cancelled: {formatDate(subscription.cancellationDate)}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col items-end shrink-0">
-        <span
-          className={`text-base font-bold ${
-            isCancelled ? 'text-gray-400' : 'text-gray-900'
-          }`}
-        >
-          {formatCurrency(subscription.monthlyCostEquivalent)}
-          <span className="text-xs font-normal text-gray-500 ml-0.5">/mo</span>
-        </span>
-
-        {subscription.billingCycle === 'yearly' && !isCancelled && (
-          <span className="text-xs text-gray-400 mt-0.5">
-            {formatCurrency(subscription.cost)}/yr
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm px-4 py-3 flex items-center justify-between gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-gray-900 truncate">{subscription.name}</p>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle}`}
+          >
+            {statusLabel}
           </span>
-        )}
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Started {subscription.startDate}
+          {subscription.status === 'free_trial' && subscription.trialEndDate && (
+            <> · Trial ends {subscription.trialEndDate}</>
+          )}
+          {subscription.status === 'cancelled' && subscription.cancellationDate && (
+            <> · Cancelled {subscription.cancellationDate}</>
+          )}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-sm font-semibold text-gray-900">
+          €{subscription.cost.toFixed(2)}
+        </p>
+        <p className="text-xs text-gray-500">
+          {subscription.billingCycle === 'yearly'
+            ? `€${subscription.normalizedMonthlyCost.toFixed(2)}/mo`
+            : '/month'}
+        </p>
       </div>
     </div>
   );
