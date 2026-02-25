@@ -1,13 +1,33 @@
 # Page snapshot
 
 ```yaml
-- generic [active]:
-  - alert [ref=e1]
-  - dialog "Failed to compile" [ref=e4]:
+- main [ref=e2]:
+  - generic [ref=e4]:
     - generic [ref=e5]:
-      - heading "Failed to compile" [level=4] [ref=e7]
-      - generic [ref=e8]:
-        - generic [ref=e10]: "./node_modules/clsx/dist/clsx.mjs Module build failed: Error: ENOENT: no such file or directory, open '/Users/eskildmadseskildsen/coding/subscription-tool/node_modules/clsx/dist/clsx.mjs'"
-        - contentinfo [ref=e11]:
-          - paragraph [ref=e12]: This error occurred during the build process and can only be dismissed by fixing the error.
+      - generic [ref=e6]:
+        - heading "Subscriptions" [level=1] [ref=e7]
+        - paragraph [ref=e8]: Loading...
+      - button "+ Add Subscription" [ref=e9]
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - heading "Filters & Sort" [level=3] [ref=e12]
+        - button "Clear filters" [disabled] [ref=e13]
+      - generic [ref=e14]:
+        - paragraph [ref=e15]: Status
+        - generic [ref=e16]:
+          - button "Active" [ref=e17]
+          - button "Free Trial" [ref=e18]
+          - button "Cancelled" [active] [ref=e19]
+      - generic [ref=e20]:
+        - paragraph [ref=e21]: Category
+        - button "Entertainment" [ref=e23]
+      - generic [ref=e24]:
+        - paragraph [ref=e25]: Sort By
+        - combobox [ref=e26]:
+          - option "Name A→Z" [selected]
+          - option "Name Z→A"
+          - option "Monthly Cost High→Low"
+          - option "Monthly Cost Low→High"
+          - option "Start Date Newest→Oldest"
+          - option "Start Date Oldest→Newest"
 ```

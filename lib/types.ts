@@ -19,6 +19,18 @@ export interface Subscription {
   updatedAt: string;
 }
 
+export interface StatusHistoryEntry {
+  id: string;
+  subscriptionId: string;
+  fromStatus: string;
+  toStatus: string;
+  changedAt: string;
+}
+
+export interface SubscriptionDetail extends Subscription {
+  statusHistory: StatusHistoryEntry[];
+}
+
 export interface CategoryGroup {
   category: string;
   subscriptions: Subscription[];
