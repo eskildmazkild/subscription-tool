@@ -1,109 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { subscriptionSchema } from '@/lib/subscriptionSchema';
-import Decimal from 'decimal.js';
-
-function normalizeMonthly(cost: number, billingCycle: string): number {
-  if (billingCycle === 'yearly') {
-    return new Decimal(cost).div(12).toDecimalPlaces(2).toNumber();
-  }
-  return new Decimal(cost).toDecimalPlaces(2).toNumber();
-}
+import { normalizeToMonthly } from '@/lib/billing';
+import type { BillingCycle } from '@/lib/types';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { id: params.id },
-    });
+  const { id } = params;
 
-    if (!subscription) {
-      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
-    }
+  const subscription = await prisma.subscription.findUnique({
+    where: { id },
+    include: {
+      statusHistory: {
+        orderBy: { changedAt: 'desc' },
+      },
+    },
+  });
 
-    return NextResponse.json({ subscription });
-  } catch (error) {
-    console.error('GET /api/subscriptions/[id] error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  if (!subscription) {
+    return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
   }
+
+  const result = {
+    ...subscription,
+    createdAt: subscription.createdAt.toISOString(),
+    updatedAt: subscription.updatedAt.toISOString(),
+    statusHistory: subscription.statusHistory.map((entry) => ({
+      ...entry,
+      changedAt: entry.changedAt.toISOString(),
+    })),
+  };
+
+  return NextResponse.json(result);
 }
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const body: unknown = await req.json();
-    const parsed = subscriptionSchema.safeParse(body);
+  const { id } = params;
 
-    if (!parsed.success) {
-      const errors: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        const key = issue.path.join('.');
-        errors[key] = issue.message;
-      }
-      return NextResponse.json({ errors }, { status: 422 });
-    }
+  const body = await req.json() as {
+    name?: string;
+    category?: string;
+    cost?: number;
+    billingCycle?: BillingCycle;
+    startDate?: string;
+    status?: string;
+    trialEndDate?: string | null;
+    cancellationDate?: string | null;
+    lastActiveDate?: string | null;
+  };
 
-    const existing = await prisma.subscription.findUnique({
-      where: { id: params.id },
-    });
+  const existing = await prisma.subscription.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
+  }
 
-    if (!existing) {
-      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
-    }
+  const oldStatus = existing.status;
+  const newStatus = body.status ?? existing.status;
 
-    const data = parsed.data;
-    const normalizedMonthlyCost = normalizeMonthly(data.cost, data.billingCycle);
+  const cost = body.cost ?? existing.cost;
+  const billingCycle = (body.billingCycle ?? existing.billingCycle) as BillingCycle;
+  const normalizedMonthlyCost = normalizeToMonthly(cost, billingCycle);
 
-    const updated = await prisma.subscription.update({
-      where: { id: params.id },
+  const updated = await prisma.subscription.update({
+    where: { id },
+    data: {
+      name: body.name ?? existing.name,
+      category: body.category ?? existing.category,
+      cost,
+      billingCycle,
+      normalizedMonthlyCost,
+      status: newStatus,
+      startDate: body.startDate ?? existing.startDate,
+      trialEndDate: body.trialEndDate !== undefined ? body.trialEndDate : existing.trialEndDate,
+      cancellationDate: body.cancellationDate !== undefined ? body.cancellationDate : existing.cancellationDate,
+      lastActiveDate: body.lastActiveDate !== undefined ? body.lastActiveDate : existing.lastActiveDate,
+    },
+    include: {
+      statusHistory: {
+        orderBy: { changedAt: 'desc' },
+      },
+    },
+  });
+
+  if (oldStatus !== newStatus) {
+    await prisma.statusHistory.create({
       data: {
-        name: data.name,
-        category: data.category,
-        cost: data.cost,
-        billingCycle: data.billingCycle,
-        normalizedMonthlyCost,
-        status: data.status,
-        startDate: data.startDate ?? null,
-        trialEndDate: data.trialEndDate ?? null,
-        cancellationDate: data.cancellationDate ?? null,
-        lastActiveDate: data.lastActiveDate ?? null,
+        subscriptionId: id,
+        fromStatus: oldStatus,
+        toStatus: newStatus,
       },
     });
-
-    return NextResponse.json({ subscription: updated });
-  } catch (error) {
-    console.error('PUT /api/subscriptions/[id] error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+
+  const result = {
+    ...updated,
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+    statusHistory: updated.statusHistory.map((entry) => ({
+      ...entry,
+      changedAt: entry.changedAt.toISOString(),
+    })),
+  };
+
+  return NextResponse.json(result);
 }
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    const existing = await prisma.subscription.findUnique({
-      where: { id: params.id },
-    });
+  const { id } = params;
 
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      );
-    }
-
-    await prisma.subscription.delete({
-      where: { id: params.id },
-    });
-
-    return new NextResponse(null, { status: 204 });
-  } catch (error) {
-    console.error('DELETE /api/subscriptions/[id] error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  const existing = await prisma.subscription.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
   }
+
+  await prisma.subscription.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
 }
