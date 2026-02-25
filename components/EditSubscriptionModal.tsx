@@ -4,15 +4,17 @@ import { useState } from 'react';
 import { Subscription, SubscriptionFormValues } from '@/lib/types';
 import SubscriptionForm from './SubscriptionForm';
 
-interface AddSubscriptionModalProps {
+interface EditSubscriptionModalProps {
+  subscription: Subscription;
   onClose: () => void;
-  onCreated: (subscription: Subscription) => void;
+  onUpdated: (updated: Subscription) => void;
 }
 
-export default function AddSubscriptionModal({
+export default function EditSubscriptionModal({
+  subscription,
   onClose,
-  onCreated,
-}: AddSubscriptionModalProps) {
+  onUpdated,
+}: EditSubscriptionModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -33,8 +35,8 @@ export default function AddSubscriptionModal({
         lastActiveDate: values.lastActiveDate.trim() || null,
       };
 
-      const response = await fetch('/api/subscriptions', {
-        method: 'POST',
+      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -44,16 +46,16 @@ export default function AddSubscriptionModal({
         const message =
           data.error ||
           (data.errors ? Object.values(data.errors).join(', ') : null) ||
-          'Failed to create subscription. Please try again.';
+          'Failed to save changes. Please try again.';
         setSubmitError(message);
         return;
       }
 
       const data = (await response.json()) as { subscription: Subscription };
-      onCreated(data.subscription);
+      onUpdated(data.subscription);
       onClose();
     } catch {
-      setSubmitError('Failed to create subscription. Please try again.');
+      setSubmitError('Failed to save changes. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +74,7 @@ export default function AddSubscriptionModal({
       <div className="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Add Subscription</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Edit Subscription</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -96,7 +98,8 @@ export default function AddSubscriptionModal({
         {/* Body */}
         <div className="max-h-[80vh] overflow-y-auto px-6 py-4">
           <SubscriptionForm
-            mode="create"
+            mode="edit"
+            initialValues={subscription}
             onSubmit={handleSubmit}
             onCancel={onClose}
             isSubmitting={isSubmitting}
