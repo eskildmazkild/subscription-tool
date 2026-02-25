@@ -1,33 +1,30 @@
-'use client';
-
-import { CategoryGroup, Subscription } from '@/lib/types';
+import { CategoryGroup as CategoryGroupType } from '@/lib/types';
 import SubscriptionCard from './SubscriptionCard';
 
 interface CategoryGroupProps {
-  group: CategoryGroup;
-  onEdit: (subscription: Subscription) => void;
-  onDelete: (subscription: Subscription) => void;
+  group: CategoryGroupType;
+  onSubscriptionUpdated: () => void;
+  onSubscriptionDeleted: () => void;
 }
 
-export default function CategoryGroupComponent({ group, onEdit, onDelete }: CategoryGroupProps) {
+export default function CategoryGroup({ group, onSubscriptionUpdated, onSubscriptionDeleted }: CategoryGroupProps) {
+  const formatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Category Header */}
-      <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">{group.category}</h2>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+        <h2 className="text-base font-semibold text-gray-800">{group.category}</h2>
         <span className="text-sm text-gray-500">
-          €{group.totalMonthlyCost.toFixed(2)}/mo
+          {formatter.format(group.totalMonthlyCost)}/mo
         </span>
       </div>
-
-      {/* Subscription List */}
-      <div className="divide-y divide-gray-100">
-        {group.subscriptions.map((sub) => (
+      <div className="space-y-3">
+        {group.subscriptions.map((subscription) => (
           <SubscriptionCard
-            key={sub.id}
-            subscription={sub}
-            onEdit={onEdit}
-            onDelete={onDelete}
+            key={subscription.id}
+            subscription={subscription}
+            onUpdated={onSubscriptionUpdated}
+            onDeleted={onSubscriptionDeleted}
           />
         ))}
       </div>

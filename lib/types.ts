@@ -1,5 +1,7 @@
 export type BillingCycle = 'monthly' | 'yearly';
 export type SubscriptionStatus = 'active' | 'free_trial' | 'cancelled';
+export type SortBy = 'name' | 'monthlyCost' | 'startDate';
+export type SortOrder = 'asc' | 'desc';
 
 export interface Subscription {
   id: string;
@@ -29,7 +31,8 @@ export interface GrandTotals {
 }
 
 export interface ApiSubscriptionsResponse {
-  subscriptions: Subscription[];
+  data: Subscription[];
+  total: number;
 }
 
 export interface ApiErrorResponse {
@@ -60,4 +63,11 @@ export interface SubscriptionFormValues {
   trialEndDate: string;
   cancellationDate: string;
   lastActiveDate: string;
+}
+
+export interface FilterState {
+  statuses: SubscriptionStatus[];
+  categories: string[];
+  sortBy: SortBy;
+  sortOrder: SortOrder;
 }

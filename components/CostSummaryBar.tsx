@@ -1,19 +1,21 @@
-import React from 'react';
-import { GrandTotals } from '@/lib/types';
-
 interface CostSummaryBarProps {
-  totals: GrandTotals;
+  totalMonthly: number;
+  totalYearly: number;
 }
 
-export default function CostSummaryBar({ totals }: CostSummaryBarProps) {
+export default function CostSummaryBar({ totalMonthly, totalYearly }: CostSummaryBarProps) {
+  const formatter = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
+
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white">
-      <p className="text-sm font-medium text-blue-100 mb-1">Total Monthly Cost</p>
-      <p className="text-3xl font-bold">£{totals.totalMonthly.toFixed(2)}</p>
-      <p className="text-sm text-blue-200 mt-1">
-        £{totals.totalYearly.toFixed(2)} per year
-      </p>
-      <p className="text-xs text-blue-300 mt-2">Cancelled subscriptions excluded</p>
+    <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-center justify-between" data-testid="cost-summary-bar">
+      <div>
+        <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Total Monthly</p>
+        <p className="text-xl font-bold text-blue-900" data-testid="total-monthly">{formatter.format(totalMonthly)}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Total Yearly</p>
+        <p className="text-xl font-bold text-blue-900" data-testid="total-yearly">{formatter.format(totalYearly)}</p>
+      </div>
     </div>
   );
 }
